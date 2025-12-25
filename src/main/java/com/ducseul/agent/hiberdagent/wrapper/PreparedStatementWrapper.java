@@ -191,20 +191,29 @@ public class PreparedStatementWrapper implements InvocationHandler {
                 long elapsed = System.currentTimeMillis() - startTime;
                 if (AgentConfig.shouldLog(elapsed)) {
                     SqlLogWriter logger = SqlLogWriter.getInstance();
+                    String queryId = AgentConfig.isLogStack() ? AgentConfig.generateQueryId() : null;
+
                     if (batchParams.isEmpty()) {
                         // No captured batch params, log with current params
                         logIfNeeded(elapsed, originalSql, indexedParams, namedParams);
                     } else {
                         // Log batch execution summary
-                        logger.writeLine("[SQL] (took=" + elapsed + "ms, batch=" + batchParams.size() + " statements)");
-                        // Log first statement as example
                         String formattedSql = SqlFormatter.format(originalSql, batchParams.get(0), namedParams);
-                        logger.writeLine("[SQL] First batch item: " + formattedSql);
-                        if (AgentConfig.isLogStack()) {
-                            String stack = SqlFormatter.formatStackTrace(AgentConfig.getMaxStackDepth());
+
+                        if (AgentConfig.isLogStack() && queryId != null) {
+                            String stack = SqlFormatter.formatStackTrace(
+                                    AgentConfig.getMaxStackDepth(),
+                                    AgentConfig.getStackPackageFilters());
                             if (!stack.isEmpty()) {
-                                logger.writeLine("[STACK] " + stack);
+                                logger.writeLine("[STACK] [" + queryId + "] " + stack);
                             }
+                            logger.writeLine("[SQL] [" + queryId + "] (took=" + elapsed + "ms, batch="
+                                    + batchParams.size() + " statements)");
+                            logger.writeLine("[SQL] [" + queryId + "] First batch item: " + formattedSql);
+                        } else {
+                            logger.writeLine(
+                                    "[SQL] (took=" + elapsed + "ms, batch=" + batchParams.size() + " statements)");
+                            logger.writeLine("[SQL] First batch item: " + formattedSql);
                         }
                     }
                     batchParams.clear();
@@ -219,13 +228,22 @@ public class PreparedStatementWrapper implements InvocationHandler {
         if (AgentConfig.shouldLog(elapsed)) {
             SqlLogWriter logger = SqlLogWriter.getInstance();
             String formattedSql = SqlFormatter.format(sql, indexed, named);
-            logger.writeLine("[SQL] (took=" + elapsed + "ms) " + formattedSql);
 
             if (AgentConfig.isLogStack()) {
-                String stack = SqlFormatter.formatStackTrace(AgentConfig.getMaxStackDepth());
+                // Generate unique query ID to correlate SQL with stack trace
+                String queryId = AgentConfig.generateQueryId();
+                String stack = SqlFormatter.formatStackTrace(
+                        AgentConfig.getMaxStackDepth(),
+                        AgentConfig.getStackPackageFilters());
+
+                // Print stack first with query ID
                 if (!stack.isEmpty()) {
-                    logger.writeLine("[STACK] " + stack);
+                    logger.writeLine("[STACK] [" + queryId + "] " + stack);
                 }
+                // Print SQL with same query ID
+                logger.writeLine("[SQL] [" + queryId + "] (took=" + elapsed + "ms) " + formattedSql);
+            } else {
+                logger.writeLine("[SQL] (took=" + elapsed + "ms) " + formattedSql);
             }
         }
     }

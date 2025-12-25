@@ -21,7 +21,8 @@ public final class SqlFormatter {
     }
 
     /**
-     * Reconstructs the SQL by replacing ? placeholders with values from indexedParams.
+     * Reconstructs the SQL by replacing ? placeholders with values from
+     * indexedParams.
      * Then applies named parameter substitution if namedParams is not empty.
      *
      * @param originalSql   the original SQL with ? placeholders
@@ -29,7 +30,8 @@ public final class SqlFormatter {
      * @param namedParams   map of parameter name to value (for CallableStatement)
      * @return the SQL string with parameters filled in
      */
-    public static String format(String originalSql, Map<Integer, Object> indexedParams, Map<String, Object> namedParams) {
+    public static String format(String originalSql, Map<Integer, Object> indexedParams,
+            Map<String, Object> namedParams) {
         if (originalSql == null) {
             return "NULL";
         }
@@ -189,53 +191,96 @@ public final class SqlFormatter {
 
     /**
      * Formats the stack trace for logging.
+     * 
+     * @param maxDepth maximum number of stack frames to include
+     * @return formatted stack trace string
      */
     public static String formatStackTrace(int maxDepth) {
+        return formatStackTrace(maxDepth, null);
+    }
+
+    /**
+     * Formats the stack trace for logging with package filtering.
+     * When packageFilters is provided and non-empty, only stack frames matching
+     * at least one filter prefix will be included in the output.
+     * 
+     * @param maxDepth       maximum number of stack frames to include
+     * @param packageFilters array of package prefixes to include (null or empty =
+     *                       include all)
+     * @return formatted stack trace string
+     */
+    public static String formatStackTrace(int maxDepth, String[] packageFilters) {
         StackTraceElement[] stack = Thread.currentThread().getStackTrace();
         StringBuilder sb = new StringBuilder();
 
         int count = 0;
-        boolean started = false;
+        boolean hasFilters = packageFilters != null && packageFilters.length > 0;
 
         for (StackTraceElement element : stack) {
             String className = element.getClassName();
 
             // Skip agent classes and java internal classes
             if (className.startsWith("com.ducseul.agent.hiberdagent.") ||
-                className.startsWith("java.lang.Thread") ||
-                className.startsWith("sun.reflect.") ||
-                className.startsWith("java.lang.reflect.") ||
-                className.startsWith("jdk.internal.") ||
-                className.contains("$Proxy")) {
+                    className.startsWith("java.lang.Thread") ||
+                    className.startsWith("sun.reflect.") ||
+                    className.startsWith("java.lang.reflect.") ||
+                    className.startsWith("jdk.internal.") ||
+                    className.contains("$Proxy")) {
                 continue;
             }
 
-            // Skip JDBC driver internals but mark that we should start capturing
-            if (className.startsWith("java.sql.") ||
-                className.contains("jdbc") ||
-                className.contains("JDBC")) {
-                started = true;
+            // Skip common framework classes that aren't useful for debugging
+            if (className.startsWith("java.") ||
+                    className.startsWith("javax.") ||
+                    className.startsWith("sun.") ||
+                    className.startsWith("com.sun.") ||
+                    className.startsWith("org.hibernate.") ||
+                    className.startsWith("org.springframework.") ||
+                    className.startsWith("org.apache.") ||
+                    className.startsWith("org.jboss.") ||
+                    className.startsWith("org.wildfly.") ||
+                    className.startsWith("io.undertow.") ||
+                    className.startsWith("org.glassfish.") ||
+                    className.startsWith("org.eclipse.") ||
+                    className.startsWith("net.bytebuddy.") ||
+                    className.startsWith("javassist.") ||
+                    className.startsWith("cglib.") ||
+                    className.contains("jdbc") ||
+                    className.contains("JDBC") ||
+                    className.contains("$$")) {
                 continue;
             }
 
-            if (started || count > 0) {
-                if (count > 0) {
-                    sb.append(" <- ");
+            // If filters are specified, only include matching packages
+            if (hasFilters) {
+                boolean matches = false;
+                for (String filter : packageFilters) {
+                    if (className.startsWith(filter)) {
+                        matches = true;
+                        break;
+                    }
                 }
-                sb.append(element.getClassName())
-                  .append(".")
-                  .append(element.getMethodName())
-                  .append("(")
-                  .append(element.getFileName())
-                  .append(":")
-                  .append(element.getLineNumber())
-                  .append(")");
-                count++;
+                if (!matches) {
+                    continue;
+                }
+            }
 
-                if (count >= maxDepth) {
-                    sb.append(" ...");
-                    break;
-                }
+            if (count > 0) {
+                sb.append(" <- ");
+            }
+            sb.append(element.getClassName())
+                    .append(".")
+                    .append(element.getMethodName())
+                    .append("(")
+                    .append(element.getFileName())
+                    .append(":")
+                    .append(element.getLineNumber())
+                    .append(")");
+            count++;
+
+            if (count >= maxDepth) {
+                sb.append(" ...");
+                break;
             }
         }
 
