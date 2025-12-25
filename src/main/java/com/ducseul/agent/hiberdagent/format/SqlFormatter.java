@@ -1,5 +1,7 @@
 package com.ducseul.agent.hiberdagent.format;
 
+import com.ducseul.agent.hiberdagent.wrapper.PreparedStatementWrapper;
+
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Map;
@@ -108,7 +110,7 @@ public final class SqlFormatter {
      * Formats a parameter value for SQL output (Oracle compatible).
      */
     public static String formatValue(Object value) {
-        if (value == null) {
+        if (value == null || value == PreparedStatementWrapper.NULL_VALUE) {
             return "NULL";
         }
 

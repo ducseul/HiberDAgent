@@ -2,6 +2,7 @@ package com.ducseul.agent.hiberdagent.wrapper;
 
 import com.ducseul.agent.hiberdagent.config.AgentConfig;
 import com.ducseul.agent.hiberdagent.format.SqlFormatter;
+import com.ducseul.agent.hiberdagent.log.SqlLogWriter;
 
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
@@ -53,6 +54,12 @@ public class StatementWrapper implements InvocationHandler {
 
         } catch (InvocationTargetException e) {
             throw e.getTargetException();
+        } catch (Throwable t) {
+            // Log any unexpected errors in the agent itself
+            SqlLogWriter.getInstance().writeError(
+                "Unexpected error in StatementWrapper.invoke() for method '" + methodName + "'", t);
+            // Re-throw to not silently swallow errors
+            throw t;
         }
     }
 
@@ -70,8 +77,12 @@ public class StatementWrapper implements InvocationHandler {
         try {
             return method.invoke(delegate, args);
         } finally {
-            long elapsed = System.currentTimeMillis() - startTime;
-            logIfNeeded(elapsed, sql);
+            try {
+                long elapsed = System.currentTimeMillis() - startTime;
+                logIfNeeded(elapsed, sql);
+            } catch (Throwable t) {
+                SqlLogWriter.getInstance().writeError("Error in handleExecuteWithSql logging", t);
+            }
         }
     }
 
@@ -80,27 +91,33 @@ public class StatementWrapper implements InvocationHandler {
         try {
             return method.invoke(delegate, args);
         } finally {
-            long elapsed = System.currentTimeMillis() - startTime;
-            if (AgentConfig.shouldLog(elapsed)) {
-                System.out.println("[SQL] (took=" + elapsed + "ms) [BATCH execution via plain Statement]");
-                if (AgentConfig.isLogStack()) {
-                    String stack = SqlFormatter.formatStackTrace(AgentConfig.getMaxStackDepth());
-                    if (!stack.isEmpty()) {
-                        System.out.println("[STACK] " + stack);
+            try {
+                long elapsed = System.currentTimeMillis() - startTime;
+                if (AgentConfig.shouldLog(elapsed)) {
+                    SqlLogWriter logger = SqlLogWriter.getInstance();
+                    logger.writeLine("[SQL] (took=" + elapsed + "ms) [BATCH execution via plain Statement]");
+                    if (AgentConfig.isLogStack()) {
+                        String stack = SqlFormatter.formatStackTrace(AgentConfig.getMaxStackDepth());
+                        if (!stack.isEmpty()) {
+                            logger.writeLine("[STACK] " + stack);
+                        }
                     }
                 }
+            } catch (Throwable t) {
+                SqlLogWriter.getInstance().writeError("Error in handleExecuteBatch logging", t);
             }
         }
     }
 
     private void logIfNeeded(long elapsed, String sql) {
         if (AgentConfig.shouldLog(elapsed)) {
-            System.out.println("[SQL] (took=" + elapsed + "ms) " + sql);
+            SqlLogWriter logger = SqlLogWriter.getInstance();
+            logger.writeLine("[SQL] (took=" + elapsed + "ms) " + sql);
 
             if (AgentConfig.isLogStack()) {
                 String stack = SqlFormatter.formatStackTrace(AgentConfig.getMaxStackDepth());
                 if (!stack.isEmpty()) {
-                    System.out.println("[STACK] " + stack);
+                    logger.writeLine("[STACK] " + stack);
                 }
             }
         }
@@ -108,33 +125,56 @@ public class StatementWrapper implements InvocationHandler {
 
     /**
      * Creates a proxy wrapper for a Statement.
+     * Returns the original statement if wrapping fails.
      */
     public static Statement wrap(Statement stmt) {
         if (stmt == null) {
             return null;
         }
 
-        Class<?>[] interfaces = getInterfaces(stmt);
-        StatementWrapper handler = new StatementWrapper(stmt);
+        try {
+            Class<?>[] interfaces = getInterfaces(stmt);
+            StatementWrapper handler = new StatementWrapper(stmt);
 
-        return (Statement) Proxy.newProxyInstance(
-            stmt.getClass().getClassLoader(),
-            interfaces,
-            handler
-        );
+            ClassLoader classLoader = stmt.getClass().getClassLoader();
+            if (classLoader == null) {
+                classLoader = Thread.currentThread().getContextClassLoader();
+            }
+            if (classLoader == null) {
+                classLoader = StatementWrapper.class.getClassLoader();
+            }
+
+            return (Statement) Proxy.newProxyInstance(
+                classLoader,
+                interfaces,
+                handler
+            );
+        } catch (Throwable t) {
+            SqlLogWriter.getInstance().writeError("Failed to create proxy for Statement", t);
+            return stmt; // Return original on failure
+        }
     }
 
     private static Class<?>[] getInterfaces(Object obj) {
         List<Class<?>> interfaces = new ArrayList<Class<?>>();
-        Class<?> current = obj.getClass();
 
-        while (current != null) {
-            for (Class<?> iface : current.getInterfaces()) {
-                if (!interfaces.contains(iface)) {
-                    interfaces.add(iface);
+        try {
+            Class<?> current = obj.getClass();
+
+            while (current != null) {
+                try {
+                    for (Class<?> iface : current.getInterfaces()) {
+                        if (!interfaces.contains(iface)) {
+                            interfaces.add(iface);
+                        }
+                    }
+                } catch (Throwable t) {
+                    SqlLogWriter.getInstance().writeError("Error getting interfaces for " + current.getName(), t);
                 }
+                current = current.getSuperclass();
             }
-            current = current.getSuperclass();
+        } catch (Throwable t) {
+            SqlLogWriter.getInstance().writeError("Error traversing class hierarchy", t);
         }
 
         if (!interfaces.contains(Statement.class)) {

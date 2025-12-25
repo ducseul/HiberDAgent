@@ -1,5 +1,6 @@
 package com.ducseul.agent.hiberdagent.advice;
 
+import com.ducseul.agent.hiberdagent.log.SqlLogWriter;
 import com.ducseul.agent.hiberdagent.wrapper.PreparedStatementWrapper;
 import net.bytebuddy.asm.Advice;
 
@@ -24,8 +25,8 @@ public class PrepareStatementAdvice {
         try {
             returned = PreparedStatementWrapper.wrap(returned, sql);
         } catch (Throwable t) {
-            // Swallow exceptions to avoid breaking application behavior
-            System.err.println("[HiberDAgent] Warning: Failed to wrap PreparedStatement: " + t.getMessage());
+            // Log and swallow exceptions to avoid breaking application behavior
+            SqlLogWriter.getInstance().writeError("Failed to wrap PreparedStatement for SQL: " + sql, t);
         }
     }
 }

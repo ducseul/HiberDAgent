@@ -4,6 +4,7 @@ import com.ducseul.agent.hiberdagent.advice.CreateStatementAdvice;
 import com.ducseul.agent.hiberdagent.advice.PrepareCallAdvice;
 import com.ducseul.agent.hiberdagent.advice.PrepareStatementAdvice;
 import com.ducseul.agent.hiberdagent.config.AgentConfig;
+import com.ducseul.agent.hiberdagent.log.SqlLogWriter;
 import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.asm.Advice;
 import net.bytebuddy.description.type.TypeDescription;
@@ -25,11 +26,13 @@ import java.sql.Connection;
  *   -Dhibernate.agent.logSqlAlways=true       (default: true)
  *   -Dhibernate.agent.logStack=false          (default: false)
  *   -Dhibernate.agent.maxStackDepth=10        (default: 10)
+ *   -Dhibernate.agent.stdout=console          (default: console, or path to file)
  */
 public class HiberDAgent {
 
     public static void premain(String agentArgs, Instrumentation inst) {
-        System.out.println("[HiberDAgent] Starting SQL logging agent...");
+        final SqlLogWriter logger = SqlLogWriter.getInstance();
+        logger.writeLine("[HiberDAgent] Starting SQL logging agent...");
         AgentConfig.printConfig();
 
         try {
@@ -42,7 +45,7 @@ public class HiberDAgent {
                                                   JavaModule module,
                                                   boolean loaded,
                                                   DynamicType dynamicType) {
-                        System.out.println("[HiberDAgent] Transformed: " + typeDescription.getName());
+                        logger.writeLine("[HiberDAgent] Transformed: " + typeDescription.getName());
                     }
 
                     @Override
@@ -51,7 +54,7 @@ public class HiberDAgent {
                                         JavaModule module,
                                         boolean loaded,
                                         Throwable throwable) {
-                        System.err.println("[HiberDAgent] Error transforming " + typeName + ": " + throwable.getMessage());
+                        logger.writeLine("[HiberDAgent] Error transforming " + typeName + ": " + throwable.getMessage());
                     }
                 })
                 .type(ElementMatchers.isSubTypeOf(Connection.class)
@@ -76,10 +79,10 @@ public class HiberDAgent {
                 })
                 .installOn(inst);
 
-            System.out.println("[HiberDAgent] Agent installed successfully. Ready to intercept JDBC calls.");
+            logger.writeLine("[HiberDAgent] Agent installed successfully. Ready to intercept JDBC calls.");
 
         } catch (Exception e) {
-            System.err.println("[HiberDAgent] Failed to install agent: " + e.getMessage());
+            logger.writeLine("[HiberDAgent] Failed to install agent: " + e.getMessage());
             e.printStackTrace();
         }
     }
@@ -96,10 +99,16 @@ public class HiberDAgent {
         System.out.println("  -Dhibernate.agent.logSqlAlways=true     Log all SQL regardless of duration (default: true)");
         System.out.println("  -Dhibernate.agent.logStack=true         Include stack trace in log (default: false)");
         System.out.println("  -Dhibernate.agent.maxStackDepth=10      Max stack frames to show (default: 10)");
+        System.out.println("  -Dhibernate.agent.stdout=console        Output destination: 'console' or file path (default: console)");
         System.out.println();
-        System.out.println("Example:");
+        System.out.println("Example (log to console):");
         System.out.println("  java -javaagent:HiberDAgent-1.0.jar \\");
         System.out.println("       -Dhibernate.agent.logStack=true \\");
+        System.out.println("       -jar your-app.jar");
+        System.out.println();
+        System.out.println("Example (log to file):");
+        System.out.println("  java -javaagent:HiberDAgent-1.0.jar \\");
+        System.out.println("       -Dhibernate.agent.stdout=D:\\Temp\\sql.log \\");
         System.out.println("       -jar your-app.jar");
     }
 }

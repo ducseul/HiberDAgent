@@ -1,5 +1,6 @@
 package com.ducseul.agent.hiberdagent.advice;
 
+import com.ducseul.agent.hiberdagent.log.SqlLogWriter;
 import com.ducseul.agent.hiberdagent.wrapper.StatementWrapper;
 import net.bytebuddy.asm.Advice;
 
@@ -23,8 +24,8 @@ public class CreateStatementAdvice {
         try {
             returned = StatementWrapper.wrap(returned);
         } catch (Throwable t) {
-            // Swallow exceptions to avoid breaking application behavior
-            System.err.println("[HiberDAgent] Warning: Failed to wrap Statement: " + t.getMessage());
+            // Log and swallow exceptions to avoid breaking application behavior
+            SqlLogWriter.getInstance().writeError("Failed to wrap Statement", t);
         }
     }
 }

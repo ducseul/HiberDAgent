@@ -2,6 +2,7 @@ package com.ducseul.agent.hiberdagent.wrapper;
 
 import com.ducseul.agent.hiberdagent.config.AgentConfig;
 import com.ducseul.agent.hiberdagent.format.SqlFormatter;
+import com.ducseul.agent.hiberdagent.log.SqlLogWriter;
 
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
@@ -22,6 +23,17 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class PreparedStatementWrapper implements InvocationHandler {
 
+    /**
+     * Sentinel object to represent SQL NULL in ConcurrentHashMap (which doesn't
+     * allow null values).
+     */
+    public static final Object NULL_VALUE = new Object() {
+        @Override
+        public String toString() {
+            return "NULL";
+        }
+    };
+
     private final Object delegate;
     private final String originalSql;
 
@@ -33,17 +45,17 @@ public class PreparedStatementWrapper implements InvocationHandler {
     private final List<Map<Integer, Object>> batchParams = new ArrayList<Map<Integer, Object>>();
 
     private static final String[] EXECUTE_METHODS = {
-        "execute", "executeQuery", "executeUpdate", "executeLargeUpdate"
+            "execute", "executeQuery", "executeUpdate", "executeLargeUpdate"
     };
 
     private static final String[] SETTER_PREFIXES = {
-        "setString", "setInt", "setLong", "setDouble", "setFloat",
-        "setBoolean", "setByte", "setShort", "setBigDecimal",
-        "setDate", "setTime", "setTimestamp", "setObject",
-        "setNull", "setBytes", "setArray", "setBlob", "setClob",
-        "setNString", "setNClob", "setRef", "setRowId", "setSQLXML",
-        "setURL", "setAsciiStream", "setBinaryStream", "setCharacterStream",
-        "setNCharacterStream", "setUnicodeStream"
+            "setString", "setInt", "setLong", "setDouble", "setFloat",
+            "setBoolean", "setByte", "setShort", "setBigDecimal",
+            "setDate", "setTime", "setTimestamp", "setObject",
+            "setNull", "setBytes", "setArray", "setBlob", "setClob",
+            "setNString", "setNClob", "setRef", "setRowId", "setSQLXML",
+            "setURL", "setAsciiStream", "setBinaryStream", "setCharacterStream",
+            "setNCharacterStream", "setUnicodeStream"
     };
 
     public PreparedStatementWrapper(Object delegate, String originalSql) {
@@ -54,6 +66,12 @@ public class PreparedStatementWrapper implements InvocationHandler {
     @Override
     public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
         String methodName = method.getName();
+        long invokeNum = AgentConfig.incrementInvoke();
+
+        // Debug: log every 1000th invocation to stderr
+        if (invokeNum % 1000 == 0) {
+            AgentConfig.debug("invoke #" + invokeNum + " method=" + methodName);
+        }
 
         try {
             // Handle parameter setters
@@ -77,11 +95,14 @@ public class PreparedStatementWrapper implements InvocationHandler {
 
             // Handle execute methods
             if (isExecuteMethod(methodName)) {
+                AgentConfig.incrementExecute();
+                AgentConfig.debug("execute #" + AgentConfig.incrementExecute() + " sql=" + originalSql);
                 return handleExecute(method, args);
             }
 
             // Handle executeBatch
             if ("executeBatch".equals(methodName) || "executeLargeBatch".equals(methodName)) {
+                AgentConfig.incrementExecute();
                 return handleExecuteBatch(method, args);
             }
 
@@ -90,6 +111,17 @@ public class PreparedStatementWrapper implements InvocationHandler {
 
         } catch (InvocationTargetException e) {
             throw e.getTargetException();
+        } catch (Throwable t) {
+            // Log any unexpected errors in the agent itself - but DON'T re-throw
+            // Re-throwing might cause the caller to abandon this proxy
+            SqlLogWriter.getInstance().writeError(
+                    "Unexpected error in PreparedStatementWrapper.invoke() for method '" + methodName + "'", t);
+            // Try to delegate anyway
+            try {
+                return method.invoke(delegate, args);
+            } catch (InvocationTargetException e) {
+                throw e.getTargetException();
+            }
         }
     }
 
@@ -115,9 +147,14 @@ public class PreparedStatementWrapper implements InvocationHandler {
         Object firstArg = args[0];
         Object value = args.length > 1 ? args[1] : null;
 
-        // Handle setNull specially
+        // Handle setNull specially - mark as NULL_VALUE
         if ("setNull".equals(methodName)) {
-            value = null;
+            value = NULL_VALUE;
+        }
+
+        // ConcurrentHashMap doesn't allow null values, use NULL_VALUE sentinel
+        if (value == null) {
+            value = NULL_VALUE;
         }
 
         if (firstArg instanceof Integer) {
@@ -136,8 +173,12 @@ public class PreparedStatementWrapper implements InvocationHandler {
         try {
             return method.invoke(delegate, args);
         } finally {
-            long elapsed = System.currentTimeMillis() - startTime;
-            logIfNeeded(elapsed, originalSql, indexedParams, namedParams);
+            try {
+                long elapsed = System.currentTimeMillis() - startTime;
+                logIfNeeded(elapsed, originalSql, indexedParams, namedParams);
+            } catch (Throwable t) {
+                SqlLogWriter.getInstance().writeError("Error in handleExecute logging", t);
+            }
         }
     }
 
@@ -146,38 +187,44 @@ public class PreparedStatementWrapper implements InvocationHandler {
         try {
             return method.invoke(delegate, args);
         } finally {
-            long elapsed = System.currentTimeMillis() - startTime;
-            if (AgentConfig.shouldLog(elapsed)) {
-                if (batchParams.isEmpty()) {
-                    // No captured batch params, log with current params
-                    logIfNeeded(elapsed, originalSql, indexedParams, namedParams);
-                } else {
-                    // Log batch execution summary
-                    System.out.println("[SQL] (took=" + elapsed + "ms, batch=" + batchParams.size() + " statements)");
-                    // Log first statement as example
-                    String formattedSql = SqlFormatter.format(originalSql, batchParams.get(0), namedParams);
-                    System.out.println("[SQL] First batch item: " + formattedSql);
-                    if (AgentConfig.isLogStack()) {
-                        String stack = SqlFormatter.formatStackTrace(AgentConfig.getMaxStackDepth());
-                        if (!stack.isEmpty()) {
-                            System.out.println("[STACK] " + stack);
+            try {
+                long elapsed = System.currentTimeMillis() - startTime;
+                if (AgentConfig.shouldLog(elapsed)) {
+                    SqlLogWriter logger = SqlLogWriter.getInstance();
+                    if (batchParams.isEmpty()) {
+                        // No captured batch params, log with current params
+                        logIfNeeded(elapsed, originalSql, indexedParams, namedParams);
+                    } else {
+                        // Log batch execution summary
+                        logger.writeLine("[SQL] (took=" + elapsed + "ms, batch=" + batchParams.size() + " statements)");
+                        // Log first statement as example
+                        String formattedSql = SqlFormatter.format(originalSql, batchParams.get(0), namedParams);
+                        logger.writeLine("[SQL] First batch item: " + formattedSql);
+                        if (AgentConfig.isLogStack()) {
+                            String stack = SqlFormatter.formatStackTrace(AgentConfig.getMaxStackDepth());
+                            if (!stack.isEmpty()) {
+                                logger.writeLine("[STACK] " + stack);
+                            }
                         }
                     }
+                    batchParams.clear();
                 }
-                batchParams.clear();
+            } catch (Throwable t) {
+                SqlLogWriter.getInstance().writeError("Error in handleExecuteBatch logging", t);
             }
         }
     }
 
     private void logIfNeeded(long elapsed, String sql, Map<Integer, Object> indexed, Map<String, Object> named) {
         if (AgentConfig.shouldLog(elapsed)) {
+            SqlLogWriter logger = SqlLogWriter.getInstance();
             String formattedSql = SqlFormatter.format(sql, indexed, named);
-            System.out.println("[SQL] (took=" + elapsed + "ms) " + formattedSql);
+            logger.writeLine("[SQL] (took=" + elapsed + "ms) " + formattedSql);
 
             if (AgentConfig.isLogStack()) {
                 String stack = SqlFormatter.formatStackTrace(AgentConfig.getMaxStackDepth());
                 if (!stack.isEmpty()) {
-                    System.out.println("[STACK] " + stack);
+                    logger.writeLine("[STACK] " + stack);
                 }
             }
         }
@@ -185,51 +232,103 @@ public class PreparedStatementWrapper implements InvocationHandler {
 
     /**
      * Creates a proxy wrapper for a PreparedStatement.
+     * Returns the original statement if wrapping fails.
+     * Avoids double-wrapping if already wrapped.
      */
     public static PreparedStatement wrap(PreparedStatement stmt, String sql) {
         if (stmt == null) {
             return null;
         }
 
-        Class<?>[] interfaces = getInterfaces(stmt);
-        PreparedStatementWrapper handler = new PreparedStatementWrapper(stmt, sql);
+        // Avoid double-wrapping: check if this is already our proxy
+        if (Proxy.isProxyClass(stmt.getClass())) {
+            InvocationHandler handler = Proxy.getInvocationHandler(stmt);
+            if (handler instanceof PreparedStatementWrapper) {
+                AgentConfig.debug("skip wrap - already wrapped: " + stmt.getClass().getName());
+                return stmt; // Already our proxy, don't wrap again
+            }
+        }
 
-        return (PreparedStatement) Proxy.newProxyInstance(
-            stmt.getClass().getClassLoader(),
-            interfaces,
-            handler
-        );
+        try {
+            long wrapNum = AgentConfig.incrementWrap();
+            AgentConfig.debug("wrap #" + wrapNum + " PreparedStatement class=" + stmt.getClass().getName());
+
+            Class<?>[] interfaces = getInterfaces(stmt);
+            PreparedStatementWrapper handler = new PreparedStatementWrapper(stmt, sql);
+
+            ClassLoader classLoader = stmt.getClass().getClassLoader();
+            if (classLoader == null) {
+                classLoader = Thread.currentThread().getContextClassLoader();
+            }
+            if (classLoader == null) {
+                classLoader = PreparedStatementWrapper.class.getClassLoader();
+            }
+
+            return (PreparedStatement) Proxy.newProxyInstance(
+                    classLoader,
+                    interfaces,
+                    handler);
+        } catch (Throwable t) {
+            SqlLogWriter.getInstance().writeError("Failed to create proxy for PreparedStatement", t);
+            return stmt; // Return original on failure
+        }
     }
 
     /**
      * Creates a proxy wrapper for a CallableStatement.
+     * Returns the original statement if wrapping fails.
      */
     public static CallableStatement wrapCallable(CallableStatement stmt, String sql) {
         if (stmt == null) {
             return null;
         }
 
-        Class<?>[] interfaces = getInterfaces(stmt);
-        PreparedStatementWrapper handler = new PreparedStatementWrapper(stmt, sql);
+        try {
+            long wrapNum = AgentConfig.incrementWrap();
+            AgentConfig.debug("wrap #" + wrapNum + " CallableStatement class=" + stmt.getClass().getName());
 
-        return (CallableStatement) Proxy.newProxyInstance(
-            stmt.getClass().getClassLoader(),
-            interfaces,
-            handler
-        );
+            Class<?>[] interfaces = getInterfaces(stmt);
+            PreparedStatementWrapper handler = new PreparedStatementWrapper(stmt, sql);
+
+            ClassLoader classLoader = stmt.getClass().getClassLoader();
+            if (classLoader == null) {
+                classLoader = Thread.currentThread().getContextClassLoader();
+            }
+            if (classLoader == null) {
+                classLoader = PreparedStatementWrapper.class.getClassLoader();
+            }
+
+            return (CallableStatement) Proxy.newProxyInstance(
+                    classLoader,
+                    interfaces,
+                    handler);
+        } catch (Throwable t) {
+            SqlLogWriter.getInstance().writeError("Failed to create proxy for CallableStatement", t);
+            return stmt; // Return original on failure
+        }
     }
 
     private static Class<?>[] getInterfaces(Object obj) {
         List<Class<?>> interfaces = new ArrayList<Class<?>>();
-        Class<?> current = obj.getClass();
 
-        while (current != null) {
-            for (Class<?> iface : current.getInterfaces()) {
-                if (!interfaces.contains(iface)) {
-                    interfaces.add(iface);
+        try {
+            Class<?> current = obj.getClass();
+
+            while (current != null) {
+                try {
+                    for (Class<?> iface : current.getInterfaces()) {
+                        if (!interfaces.contains(iface)) {
+                            interfaces.add(iface);
+                        }
+                    }
+                } catch (Throwable t) {
+                    // Some classloaders may throw on getInterfaces()
+                    SqlLogWriter.getInstance().writeError("Error getting interfaces for " + current.getName(), t);
                 }
+                current = current.getSuperclass();
             }
-            current = current.getSuperclass();
+        } catch (Throwable t) {
+            SqlLogWriter.getInstance().writeError("Error traversing class hierarchy", t);
         }
 
         // Ensure standard JDBC interfaces are included
