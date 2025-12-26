@@ -191,25 +191,27 @@ public final class SqlFormatter {
 
     /**
      * Formats the stack trace for logging.
-     * 
+     *
      * @param maxDepth maximum number of stack frames to include
+     * @param compact  if true, all frames on single line; if false, one frame per line
      * @return formatted stack trace string
      */
-    public static String formatStackTrace(int maxDepth) {
-        return formatStackTrace(maxDepth, null);
+    public static String formatStackTrace(int maxDepth, boolean compact) {
+        return formatStackTrace(maxDepth, null, compact);
     }
 
     /**
      * Formats the stack trace for logging with package filtering.
      * When packageFilters is provided and non-empty, only stack frames matching
      * at least one filter prefix will be included in the output.
-     * 
+     *
      * @param maxDepth       maximum number of stack frames to include
      * @param packageFilters array of package prefixes to include (null or empty =
      *                       include all)
+     * @param compact        if true, all frames on single line; if false, one frame per line
      * @return formatted stack trace string
      */
-    public static String formatStackTrace(int maxDepth, String[] packageFilters) {
+    public static String formatStackTrace(int maxDepth, String[] packageFilters, boolean compact) {
         StackTraceElement[] stack = Thread.currentThread().getStackTrace();
         StringBuilder sb = new StringBuilder();
 
@@ -266,7 +268,13 @@ public final class SqlFormatter {
             }
 
             if (count > 0) {
-                sb.append(" <- ");
+                if (compact) {
+                    sb.append(" <- ");
+                } else {
+                    sb.append("\n    at ");
+                }
+            } else if (!compact) {
+                sb.append("    at ");
             }
             sb.append(element.getClassName())
                     .append(".")
@@ -279,7 +287,11 @@ public final class SqlFormatter {
             count++;
 
             if (count >= maxDepth) {
-                sb.append(" ...");
+                if (compact) {
+                    sb.append(" ...");
+                } else {
+                    sb.append("\n    ...");
+                }
                 break;
             }
         }

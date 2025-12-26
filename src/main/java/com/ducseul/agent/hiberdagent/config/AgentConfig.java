@@ -31,6 +31,7 @@ public final class AgentConfig {
     private static final boolean logStack;
     private static final boolean logSqlAlways;
     private static final int maxStackDepth;
+    private static final boolean compactStackTrace;
     private static final boolean debug;
     private static final String[] stackPackageFilters;
     private static final VerificationResult licenseResult;
@@ -61,6 +62,7 @@ public final class AgentConfig {
         logStack = getBoolean(PREFIX + "logStack", false);
         logSqlAlways = getBoolean(PREFIX + "logSqlAlways", true);
         maxStackDepth = getInt(PREFIX + "maxStackDepth", 10);
+        compactStackTrace = getBoolean(PREFIX + "compactStackTrace", false);
         debug = getBoolean(PREFIX + "debug", false);
         stackPackageFilters = parsePackageFilters(System.getProperty(PREFIX + "stackPackageFilter"));
     }
@@ -202,6 +204,10 @@ public final class AgentConfig {
         return maxStackDepth;
     }
 
+    public static boolean isCompactStackTrace() {
+        return compactStackTrace;
+    }
+
     public static String[] getStackPackageFilters() {
         return stackPackageFilters;
     }
@@ -330,6 +336,7 @@ public final class AgentConfig {
         logger.writeBootstrapLine("  logSqlAlways       = " + logSqlAlways);
         logger.writeBootstrapLine("  logStack           = " + logStack);
         logger.writeBootstrapLine("  maxStackDepth      = " + maxStackDepth);
+        logger.writeBootstrapLine("  compactStackTrace  = " + compactStackTrace);
         logger.writeBootstrapLine("  stackPackageFilter = "
                 + (stackPackageFilters.length == 0 ? "(all)" : String.join(", ", stackPackageFilters)));
         logger.writeBootstrapLine("  debug              = " + debug);

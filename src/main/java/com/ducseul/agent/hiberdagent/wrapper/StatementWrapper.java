@@ -97,7 +97,9 @@ public class StatementWrapper implements InvocationHandler {
                     SqlLogWriter logger = SqlLogWriter.getInstance();
                     logger.writeLine("[SQL] (took=" + elapsed + "ms) [BATCH execution via plain Statement]");
                     if (AgentConfig.isLogStack()) {
-                        String stack = SqlFormatter.formatStackTrace(AgentConfig.getMaxStackDepth());
+                        String stack = SqlFormatter.formatStackTrace(
+                                AgentConfig.getMaxStackDepth(),
+                                AgentConfig.isCompactStackTrace());
                         if (!stack.isEmpty()) {
                             logger.writeLine("[STACK] " + stack);
                         }
@@ -115,7 +117,9 @@ public class StatementWrapper implements InvocationHandler {
             logger.writeLine("[SQL] (took=" + elapsed + "ms) " + sql);
 
             if (AgentConfig.isLogStack()) {
-                String stack = SqlFormatter.formatStackTrace(AgentConfig.getMaxStackDepth());
+                String stack = SqlFormatter.formatStackTrace(
+                        AgentConfig.getMaxStackDepth(),
+                        AgentConfig.isCompactStackTrace());
                 if (!stack.isEmpty()) {
                     logger.writeLine("[STACK] " + stack);
                 }
