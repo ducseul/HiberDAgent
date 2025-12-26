@@ -54,7 +54,7 @@ All options are set via system properties with the prefix `hibernate.agent.`:
 | `hibernate.agent.compactStackTrace` | `false` | If true, show stack trace on single line; if false, one frame per line |
 | `hibernate.agent.stackPackageFilter` | *(all)* | Comma-separated package prefixes to include in stack traces |
 | `hibernate.agent.debug` | `false` | Enable debug logging to stderr |
-| `hibernate.agent.logFile` | *(console)* | Path to log file (if not set, logs to stdout) |
+| `hibernate.agent.stdout` | *(console)* | Path to log file (if not set, logs to stdout) |
 
 ### Examples
 
