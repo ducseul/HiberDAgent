@@ -97,6 +97,110 @@
                     </execution>
                 </executions>
             </plugin>
+
+            <!-- ProGuard obfuscation -->
+            <plugin>
+                <groupId>com.github.wvengen</groupId>
+                <artifactId>proguard-maven-plugin</artifactId>
+                <version>2.6.1</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>proguard</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <proguardVersion>7.4.2</proguardVersion>
+                    <injar>${project.build.finalName}.jar</injar>
+                    <outjar>${project.build.finalName}-obf.jar</outjar>
+                    <obfuscate>true</obfuscate>
+                    <proguardInclude>${project.basedir}/proguard.conf</proguardInclude>
+                    <options>
+                        <option>-libraryjars &lt;java.home&gt;/jmods/java.base.jmod(!**.jar;!module-info.class)</option>
+                        <option>-libraryjars &lt;java.home&gt;/jmods/java.sql.jmod(!**.jar;!module-info.class)</option>
+                        <option>-libraryjars &lt;java.home&gt;/jmods/java.instrument.jmod(!**.jar;!module-info.class)</option>
+                        <option>-libraryjars &lt;java.home&gt;/jmods/java.logging.jmod(!**.jar;!module-info.class)</option>
+                        <option>-dontskipnonpubliclibraryclasses</option>
+                        <option>-dontskipnonpubliclibraryclassmembers</option>
+                    </options>
+                </configuration>
+                <dependencies>
+                    <dependency>
+                        <groupId>com.guardsquare</groupId>
+                        <artifactId>proguard-base</artifactId>
+                        <version>7.4.2</version>
+                    </dependency>
+                    <dependency>
+                        <groupId>com.guardsquare</groupId>
+                        <artifactId>proguard-core</artifactId>
+                        <version>9.1.1</version>
+                    </dependency>
+                </dependencies>
+            </plugin>
+
+            <!-- Generate integrity hash after obfuscation -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.1.0</version>
+                <executions>
+                    <execution>
+                        <id>generate-integrity-hash</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>java</goal>
+                        </goals>
+                        <configuration>
+                            <mainClass>com.ducseul.agent.hiberdagent.security.HashGenerator</mainClass>
+                            <arguments>
+                                <argument>${project.build.directory}/${project.build.finalName}-obf.jar</argument>
+                            </arguments>
+                            <classpathScope>compile</classpathScope>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <!-- Profile for release build with obfuscation -->
+        <profile>
+            <id>obfuscate</id>
+            <properties>
+                <skip.proguard>false</skip.proguard>
+            </properties>
+        </profile>
+
+        <!-- Default profile skips obfuscation for faster dev builds -->
+        <profile>
+            <id>dev</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+            </activation>
+            <properties>
+                <skip.proguard>true</skip.proguard>
+            </properties>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>com.github.wvengen</groupId>
+                        <artifactId>proguard-maven-plugin</artifactId>
+                        <configuration>
+                            <skip>true</skip>
+                        </configuration>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>exec-maven-plugin</artifactId>
+                        <configuration>
+                            <skip>true</skip>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

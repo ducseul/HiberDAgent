@@ -2,6 +2,7 @@ package com.ducseul.agent.hiberdagent.config;
 
 import com.ducseul.agent.hiberdagent.entity.VerificationResult;
 import com.ducseul.agent.hiberdagent.log.SqlLogWriter;
+import com.ducseul.agent.hiberdagent.security.IntegrityChecker;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -41,7 +42,15 @@ public final class AgentConfig {
     private static final AtomicLong queryIdCounter = new AtomicLong(0);
 
     static {
-        // Verify license first - stop application if invalid
+        // Verify JAR integrity first - detect tampering
+        try {
+            IntegrityChecker.verify();
+        } catch (SecurityException e) {
+            System.err.println("[HiberDAgent] SECURITY ERROR: " + e.getMessage());
+            throw new RuntimeException("HiberDAgent security check failed", e);
+        }
+
+        // Verify license - stop application if invalid
         licenseResult = verifyLicenseAtStartup();
         if (!licenseResult.isValid) {
             printLicenseError(licenseResult.message);
