@@ -44,25 +44,7 @@ public final class AgentConfig {
         // Verify license first - stop application if invalid
         licenseResult = verifyLicenseAtStartup();
         if (!licenseResult.isValid) {
-            System.err.println();
-            System.err.println("================================================================================");
-            System.err.println("                         HIBERDAGENT LICENSE ERROR");
-            System.err.println("================================================================================");
-            System.err.println();
-            System.err.println("  License verification failed: " + licenseResult.message);
-            System.err.println();
-            System.err.println("  Please provide a valid license using one of these methods:");
-            System.err.println();
-            System.err.println("  1. Pass license file path:");
-            System.err.println("     -Dhibernate.agent.license=/path/to/license.lic");
-            System.err.println();
-            System.err.println("  2. Pass license string directly:");
-            System.err.println("     -Dhibernate.agent.license=license-string");
-            System.err.println();
-            System.err.println("  Contact your administrator to obtain a valid license.");
-            System.err.println();
-            System.err.println("================================================================================");
-            System.err.println();
+            printLicenseError(licenseResult.message);
             throw new RuntimeException("HiberDAgent license verification failed: " + licenseResult.message);
         }
 
@@ -72,6 +54,49 @@ public final class AgentConfig {
         maxStackDepth = getInt(PREFIX + "maxStackDepth", 10);
         debug = getBoolean(PREFIX + "debug", false);
         stackPackageFilters = parsePackageFilters(System.getProperty(PREFIX + "stackPackageFilter"));
+    }
+
+    /**
+     * Prints license error to both console and log file.
+     *
+     * @param errorMessage the error message to display
+     */
+    private static void printLicenseError(String errorMessage) {
+        String[] lines = {
+            "",
+            "================================================================================",
+            "                         HIBERDAGENT LICENSE ERROR",
+            "================================================================================",
+            "",
+            "  License verification failed: " + errorMessage,
+            "",
+            "  Please provide a valid license using one of these methods:",
+            "",
+            "  1. Pass license file path:",
+            "     -Dhibernate.agent.license=/path/to/license.lic",
+            "",
+            "  2. Pass license string directly:",
+            "     -Dhibernate.agent.license=license-string",
+            "",
+            "  Contact your administrator to obtain a valid license.",
+            "",
+            "================================================================================",
+            ""
+        };
+
+        // Write to both console and log file using writeBootstrapLine
+        try {
+            SqlLogWriter logger = SqlLogWriter.getInstance();
+            for (String line : lines) {
+                logger.writeBootstrapLine(line);
+            }
+        } catch (Throwable t) {
+            // Fallback to stderr if logger fails
+            for (String line : lines) {
+                System.err.println(line);
+            }
+            System.err.flush();
+        }
     }
 
     /**
@@ -280,26 +305,26 @@ public final class AgentConfig {
 
     public static void printConfig() {
         SqlLogWriter logger = SqlLogWriter.getInstance();
-        logger.writeLine("[HiberDAgent] Configuration:");
-        logger.writeLine("  license            = " + (licenseResult.isValid ? "VALID" : "INVALID"));
+        logger.writeBootstrapLine("[HiberDAgent] Configuration:");
+        logger.writeBootstrapLine("  license            = " + (licenseResult.isValid ? "VALID" : "INVALID"));
         if (licenseResult.fields != null) {
             String licensee = licenseResult.fields.get("Licensee");
             String validTo = licenseResult.fields.get("ValidTo");
             if (licensee != null) {
-                logger.writeLine("  licensee           = " + licensee);
+                logger.writeBootstrapLine("  licensee           = " + licensee);
             }
             if (validTo != null) {
-                logger.writeLine("  validTo            = " + validTo);
+                logger.writeBootstrapLine("  validTo            = " + validTo);
             }
         }
-        logger.writeLine("  slowThresholdMs    = " + slowThresholdMs);
-        logger.writeLine("  logSqlAlways       = " + logSqlAlways);
-        logger.writeLine("  logStack           = " + logStack);
-        logger.writeLine("  maxStackDepth      = " + maxStackDepth);
-        logger.writeLine("  stackPackageFilter = "
+        logger.writeBootstrapLine("  slowThresholdMs    = " + slowThresholdMs);
+        logger.writeBootstrapLine("  logSqlAlways       = " + logSqlAlways);
+        logger.writeBootstrapLine("  logStack           = " + logStack);
+        logger.writeBootstrapLine("  maxStackDepth      = " + maxStackDepth);
+        logger.writeBootstrapLine("  stackPackageFilter = "
                 + (stackPackageFilters.length == 0 ? "(all)" : String.join(", ", stackPackageFilters)));
-        logger.writeLine("  debug              = " + debug);
-        logger.writeLine(
+        logger.writeBootstrapLine("  debug              = " + debug);
+        logger.writeBootstrapLine(
                 "  stdout             = " + (logger.isFileMode() ? logger.getFilePath() + " (file)" : "console"));
 
         if (debug) {

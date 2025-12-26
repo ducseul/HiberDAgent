@@ -89,6 +89,27 @@ public final class SqlLogWriter {
     }
 
     /**
+     * Writes a bootstrap/startup log line to BOTH console and file (if configured).
+     * Use this for important agent startup messages that should always be visible.
+     * Thread-safe and will never throw or block forever.
+     */
+    public void writeBootstrapLine(String message) {
+        // Always write to console
+        safeConsole(message);
+
+        // Also write to file if in file mode
+        if (fileMode && !disabled) {
+            try {
+                writeToFile(message);
+                writeCount.incrementAndGet();
+                lastWriteTime.set(System.currentTimeMillis());
+            } catch (Throwable t) {
+                handleWriteError("writeBootstrapLine", t, message);
+            }
+        }
+    }
+
+    /**
      * Logs an error that occurred in the agent. Always writes to stderr and optionally to file.
      * Use this to report agent internal errors.
      */

@@ -32,7 +32,7 @@ public class HiberDAgent {
 
     public static void premain(String agentArgs, Instrumentation inst) {
         final SqlLogWriter logger = SqlLogWriter.getInstance();
-        logger.writeLine("[HiberDAgent] Starting SQL logging agent...");
+        logger.writeBootstrapLine("[HiberDAgent] Starting SQL logging agent...");
         AgentConfig.printConfig();
 
         try {
@@ -79,10 +79,10 @@ public class HiberDAgent {
                 })
                 .installOn(inst);
 
-            logger.writeLine("[HiberDAgent] Agent installed successfully. Ready to intercept JDBC calls.");
+            logger.writeBootstrapLine("[HiberDAgent] Agent installed successfully. Ready to intercept JDBC calls.");
 
         } catch (Exception e) {
-            logger.writeLine("[HiberDAgent] Failed to install agent: " + e.getMessage());
+            logger.writeBootstrapLine("[HiberDAgent] Failed to install agent: " + e.getMessage());
             e.printStackTrace();
         }
     }
