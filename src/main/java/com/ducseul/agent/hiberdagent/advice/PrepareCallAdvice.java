@@ -1,6 +1,5 @@
 package com.ducseul.agent.hiberdagent.advice;
 
-import com.ducseul.agent.hiberdagent.log.SqlLogWriter;
 import com.ducseul.agent.hiberdagent.wrapper.PreparedStatementWrapper;
 import net.bytebuddy.asm.Advice;
 
@@ -12,21 +11,15 @@ import java.sql.CallableStatement;
  */
 public class PrepareCallAdvice {
 
-    @Advice.OnMethodExit(onThrowable = Throwable.class)
+    @Advice.OnMethodExit(suppress = Throwable.class)
     public static void onExit(
             @Advice.Argument(0) String sql,
-            @Advice.Return(readOnly = false) CallableStatement returned,
-            @Advice.Thrown Throwable thrown) {
+            @Advice.Return(readOnly = false) CallableStatement returned) {
 
-        if (thrown != null || returned == null) {
+        if (returned == null) {
             return;
         }
 
-        try {
-            returned = PreparedStatementWrapper.wrapCallable(returned, sql);
-        } catch (Throwable t) {
-            // Log and swallow exceptions to avoid breaking application behavior
-            SqlLogWriter.getInstance().writeError("Failed to wrap CallableStatement for SQL: " + sql, t);
-        }
+        returned = PreparedStatementWrapper.wrapCallable(returned, sql);
     }
 }

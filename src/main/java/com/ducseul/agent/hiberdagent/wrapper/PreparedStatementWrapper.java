@@ -203,7 +203,8 @@ public class PreparedStatementWrapper implements InvocationHandler {
                         if (AgentConfig.isLogStack() && queryId != null) {
                             String stack = SqlFormatter.formatStackTrace(
                                     AgentConfig.getMaxStackDepth(),
-                                    AgentConfig.getStackPackageFilters());
+                                    AgentConfig.getStackPackageFilters(),
+                                    AgentConfig.isCompactStackTrace());
                             if (!stack.isEmpty()) {
                                 logger.writeLine("[STACK] [" + queryId + "] " + stack);
                             }
@@ -234,7 +235,8 @@ public class PreparedStatementWrapper implements InvocationHandler {
                 String queryId = AgentConfig.generateQueryId();
                 String stack = SqlFormatter.formatStackTrace(
                         AgentConfig.getMaxStackDepth(),
-                        AgentConfig.getStackPackageFilters());
+                        AgentConfig.getStackPackageFilters(),
+                        AgentConfig.isCompactStackTrace());
 
                 // Print stack first with query ID
                 if (!stack.isEmpty()) {

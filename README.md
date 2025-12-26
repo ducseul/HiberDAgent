@@ -51,6 +51,7 @@ All options are set via system properties with the prefix `hibernate.agent.`:
 | `hibernate.agent.slowThresholdMs` | `5000` | Threshold (ms) for slow query detection |
 | `hibernate.agent.logStack` | `false` | Include stack trace with each query |
 | `hibernate.agent.maxStackDepth` | `10` | Maximum stack frames to show |
+| `hibernate.agent.compactStackTrace` | `false` | If true, show stack trace on single line; if false, one frame per line |
 | `hibernate.agent.stackPackageFilter` | *(all)* | Comma-separated package prefixes to include in stack traces |
 | `hibernate.agent.debug` | `false` | Enable debug logging to stderr |
 | `hibernate.agent.logFile` | *(console)* | Path to log file (if not set, logs to stdout) |
@@ -105,10 +106,19 @@ java -javaagent:HiberDAgent-1.0.jar \
 [SQL] (took=128ms) INSERT INTO orders (user_id, total) VALUES (123, 99.99)
 ```
 
-### With Stack Traces
+### With Stack Traces (Multi-line, default)
 When `-Dhibernate.agent.logStack=true`:
 ```
-[STACK] [Q000001] com.myapp.dao.UserDao.findById(UserDao.java:45) <- com.myapp.service.UserService.getUser(UserService.java:32)
+[STACK] [Q000001]     at com.myapp.dao.UserDao.findById(UserDao.java:45)
+    at com.myapp.service.UserService.getUser(UserService.java:32)
+    at com.myapp.controller.UserController.show(UserController.java:28)
+[SQL] [Q000001] (took=45ms) SELECT * FROM users WHERE id = 123
+```
+
+### With Stack Traces (Compact, single line)
+When `-Dhibernate.agent.logStack=true -Dhibernate.agent.compactStackTrace=true`:
+```
+[STACK] [Q000001] com.myapp.dao.UserDao.findById(UserDao.java:45) <- com.myapp.service.UserService.getUser(UserService.java:32) <- com.myapp.controller.UserController.show(UserController.java:28)
 [SQL] [Q000001] (took=45ms) SELECT * FROM users WHERE id = 123
 ```
 
